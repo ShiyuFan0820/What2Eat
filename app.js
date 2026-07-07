@@ -7,9 +7,22 @@ const state = {
   lat: null,
   lon: null,
   restaurants: [],   // all found nearby
-  budget: "mid",
+  category: "any",
   spinning: false,
   lastPickId: null,
+};
+
+/* Craving categories — matched against real OSM data (amenity + cuisine
+   tags), unlike price which OSM rarely records. A place can belong to
+   several categories (e.g. a ramen restaurant is meal + noodle + japanese). */
+const CATEGORIES = {
+  meal: (r) => r.amenity === "restaurant",
+  fast: (r) => r.amenity === "fast_food",
+  cafe: (r) => r.amenity === "cafe",
+  noodle: (r) => /noodle|ramen|udon|soba|pho/.test(r.cuisineRaw),
+  chinese: (r) => /chinese|dumpling|hotpot|hot_pot|sichuan|cantonese|dim_sum|wonton/.test(r.cuisineRaw),
+  japanese: (r) => /japanese|sushi|ramen|izakaya|teppanyaki|donburi|udon/.test(r.cuisineRaw),
+  dessert: (r) => /dessert|ice_cream|cake|bakery|bubble_tea|juice|tea|waffle|pancake|donut/.test(r.cuisineRaw) || r.amenity === "cafe",
 };
 
 /* ---------------------------------------------------
@@ -31,8 +44,9 @@ const I18N = {
     addrSearching: "🔍 Looking up that address…",
     addrFail: "Couldn't find that address 😢 — try another one?",
     btnLocate: '<span class="btn-emoji">🧭</span> Find me!',
-    budgetTitle: '<span class="step-badge">2</span> What\'s your budget? 💰',
-    chips: { cheap: "Thrifty", mid: "Comfy", fancy: "Treat day!", any: "Anything" },
+    budgetTitle: '<span class="step-badge">2</span> What are you craving? 🍽️',
+    chips: { any: "Anything", meal: "Restaurant", fast: "Fast food", cafe: "Café", noodle: "Noodles", chinese: "Chinese", japanese: "Japanese", dessert: "Sweet & drinks" },
+    typeLabels: { restaurant: "🍽️ Restaurant", fast_food: "🍔 Fast food", cafe: "☕ Café", food_court: "🏬 Food court" },
     spinTitle: '<span class="step-badge">3</span> Ready? 🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> Pick my meal!',
     btnMap: '<span class="btn-emoji">🗺️</span> Guide me there',
@@ -61,7 +75,7 @@ const I18N = {
     noResto: (r) => `No restaurants found within ${r} 🏜️ — try a bigger radius?`,
     found: (n, r) => `🎉 Found ${n} tasty spots within ${r}!`,
     unitM: "m", unitKm: "km",
-    matchSome: (n) => `${n} place${n > 1 ? "s" : ""} match your budget 🤤`,
+    matchSome: (n) => `${n} spot${n > 1 ? "s" : ""} match your craving 🤤`,
     matchNone: "No exact matches — I'll pick from everything nearby 😉",
     budgetLabels: { cheap: "🪙 Thrifty $", mid: "💵 Comfy $$", fancy: "💎 Treat $$$", any: "🤷 Any" },
     walkMeta: (min) => `About a ${min} min walk — your tummy can make it! 💪`,
@@ -98,8 +112,9 @@ const I18N = {
     addrSearching: "🔍 正在查找这个地址…",
     addrFail: "找不到这个地址 😢——换一个试试？",
     btnLocate: '<span class="btn-emoji">🧭</span> 定位我！',
-    budgetTitle: '<span class="step-badge">2</span> 今天预算多少？💰',
-    chips: { cheap: "省钱党", mid: "小康餐", fancy: "犒劳日!", any: "都可以" },
+    budgetTitle: '<span class="step-badge">2</span> 今天想吃点啥？🍽️',
+    chips: { any: "都可以", meal: "正餐馆", fast: "快餐", cafe: "咖啡馆", noodle: "面食", chinese: "中餐", japanese: "日料", dessert: "甜点饮品" },
+    typeLabels: { restaurant: "🍽️ 正餐馆", fast_food: "🍔 快餐", cafe: "☕ 咖啡馆", food_court: "🏬 美食广场" },
     spinTitle: '<span class="step-badge">3</span> 准备好了吗？🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> 帮我选一家！',
     btnMap: '<span class="btn-emoji">🗺️</span> 带我去！',
@@ -128,8 +143,8 @@ const I18N = {
     noResto: (r) => `${r} 内没有找到餐厅 🏜️——把范围调大一点？`,
     found: (n, r) => `🎉 在 ${r} 内找到 ${n} 家好店！`,
     unitM: "米", unitKm: "公里",
-    matchSome: (n) => `有 ${n} 家店符合你的预算 🤤`,
-    matchNone: "没有完全符合预算的——我会从附近所有店里帮你挑 😉",
+    matchSome: (n) => `有 ${n} 家店符合你的口味 🤤`,
+    matchNone: "没有完全符合口味的——我会从附近所有店里帮你挑 😉",
     budgetLabels: { cheap: "🪙 省钱 $", mid: "💵 小康 $$", fancy: "💎 犒劳 $$$", any: "🤷 随意" },
     walkMeta: (min) => `步行大约 ${min} 分钟——肚子撑得住！💪`,
     pendingHow: (emoji, name) => `${emoji} 你去了 ${name}——好吃吗？`,
@@ -157,6 +172,7 @@ const I18N = {
 
 const T = () => I18N[lang];
 const budgetLabel = (b) => T().budgetLabels[b] || "";
+const typeLabel = (a) => T().typeLabels[a] || "🍽️";
 
 function applyLang() {
   const d = T();
@@ -171,8 +187,8 @@ function applyLang() {
   $("addr-input").placeholder = d.addrPlaceholder;
   set("#btn-locate", d.btnLocate);
   set("#step-budget .card-title", d.budgetTitle);
-  for (const k of ["cheap", "mid", "fancy", "any"])
-    set(`.budget-chip[data-budget="${k}"] .chip-label`, d.chips[k]);
+  for (const k of Object.keys(d.chips))
+    set(`.budget-chip[data-cat="${k}"] .chip-label`, d.chips[k]);
   set("#step-spin .card-title", d.spinTitle);
   set("#btn-spin", d.btnSpin);
   set("#btn-map", d.btnMap);
@@ -373,16 +389,19 @@ async function fetchRestaurants() {
       const lon = el.lon ?? el.center?.lon;
       const tags = el.tags || {};
       if (!lat || !lon || !tags.name) return null;
-      return {
+      const r = {
         id: el.type + el.id,
         name: tags.name,
         lat, lon,
         emoji: emojiFor(tags),
         budget: guessBudget(tags),
         cuisine: (tags.cuisine || "").split(";")[0].replace(/_/g, " "),
+        cuisineRaw: (tags.cuisine || "").toLowerCase(),
         amenity: tags.amenity,
         dist: haversine(state.lat, state.lon, lat, lon),
       };
+      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      return r;
     })
     .filter(Boolean)
     .sort((a, b) => a.dist - b.dist);
@@ -449,18 +468,18 @@ function haversine(lat1, lon1, lat2, lon2) {
 }
 
 /* ---------------------------------------------------
-   Budget filter
+   Craving filter
 --------------------------------------------------- */
 function candidates() {
-  if (state.budget === "any") return state.restaurants;
-  const matches = state.restaurants.filter((r) => r.budget === state.budget);
+  if (state.category === "any") return state.restaurants;
+  const matches = state.restaurants.filter((r) => r.cats.includes(state.category));
   return matches.length ? matches : state.restaurants; // graceful fallback
 }
 
 function updateMatchCount() {
-  const strict = state.budget === "any"
+  const strict = state.category === "any"
     ? state.restaurants.length
-    : state.restaurants.filter((r) => r.budget === state.budget).length;
+    : state.restaurants.filter((r) => r.cats.includes(state.category)).length;
   $("match-count").textContent = strict ? T().matchSome(strict) : T().matchNone;
 }
 
@@ -505,7 +524,7 @@ function spin() {
 
 function renderResultInfo(r) {
   const tags = [];
-  tags.push(`<span class="tag">${budgetLabel(r.budget)}</span>`);
+  tags.push(`<span class="tag">${typeLabel(r.amenity)}</span>`);
   if (r.cuisine) tags.push(`<span class="tag mint">${r.cuisine}</span>`);
   tags.push(`<span class="tag butter">📍 ${fmtDist(r.dist)}</span>`);
   $("result-tags").innerHTML = tags.join("");
@@ -701,6 +720,7 @@ async function saveCheckin() {
     emoji: r.emoji,
     cuisine: r.cuisine || "",
     budget: r.budget || "mid",
+    amenity: r.amenity || "",
     dist: r.dist || 0,
     mood: checkin.mood,
     note: $("note-input").value.trim(),
@@ -732,7 +752,7 @@ async function renderDiary() {
         ${thumb}
         <div class="diary-info">
           <div class="diary-name">${escapeHtml(v.name)}</div>
-          <div class="diary-sub">${dateStr} · ${budgetLabel(v.budget)}</div>
+          <div class="diary-sub">${dateStr} · ${v.amenity ? typeLabel(v.amenity) : budgetLabel(v.budget)}</div>
           ${v.note ? `<div class="diary-note">“${escapeHtml(v.note)}”</div>` : ""}
         </div>
         <span class="diary-mood">${v.mood}</span>
@@ -887,12 +907,12 @@ $("radius-input").addEventListener("change", (e) => {
 $("btn-spin").addEventListener("click", spin);
 $("btn-reroll").addEventListener("click", spin);
 
-$("budget-row").addEventListener("click", (e) => {
+$("cat-row").addEventListener("click", (e) => {
   const chip = e.target.closest(".budget-chip");
   if (!chip) return;
   document.querySelectorAll(".budget-chip").forEach((c) => c.classList.remove("selected"));
   chip.classList.add("selected");
-  state.budget = chip.dataset.budget;
+  state.category = chip.dataset.cat;
   updateMatchCount();
 });
 

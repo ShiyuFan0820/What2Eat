@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet" />
   <link href="https://unpkg.com/@chinese-fonts/xiaolai/dist/Xiaolai/result.css" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
@@ -67,27 +67,39 @@
 
     <!-- ===== Step 2: Budget ===== -->
     <section class="card hidden" id="step-budget">
-      <h2 class="card-title"><span class="step-badge">2</span> What's your budget? 💰</h2>
-      <div class="budget-row" id="budget-row">
-        <button class="budget-chip" data-budget="cheap">
-          <span class="chip-emoji">🪙</span>
-          <span class="chip-label">Thrifty</span>
-          <span class="chip-price">$</span>
-        </button>
-        <button class="budget-chip selected" data-budget="mid">
-          <span class="chip-emoji">💵</span>
-          <span class="chip-label">Comfy</span>
-          <span class="chip-price">$$</span>
-        </button>
-        <button class="budget-chip" data-budget="fancy">
-          <span class="chip-emoji">💎</span>
-          <span class="chip-label">Treat day!</span>
-          <span class="chip-price">$$$</span>
-        </button>
-        <button class="budget-chip" data-budget="any">
+      <h2 class="card-title"><span class="step-badge">2</span> What are you craving? 🍽️</h2>
+      <div class="budget-row" id="cat-row">
+        <button class="budget-chip selected" data-cat="any">
           <span class="chip-emoji">🤷</span>
           <span class="chip-label">Anything</span>
-          <span class="chip-price">$?</span>
+        </button>
+        <button class="budget-chip" data-cat="meal">
+          <span class="chip-emoji">🍽️</span>
+          <span class="chip-label">Restaurant</span>
+        </button>
+        <button class="budget-chip" data-cat="fast">
+          <span class="chip-emoji">🍔</span>
+          <span class="chip-label">Fast food</span>
+        </button>
+        <button class="budget-chip" data-cat="cafe">
+          <span class="chip-emoji">☕</span>
+          <span class="chip-label">Café</span>
+        </button>
+        <button class="budget-chip" data-cat="noodle">
+          <span class="chip-emoji">🍜</span>
+          <span class="chip-label">Noodles</span>
+        </button>
+        <button class="budget-chip" data-cat="chinese">
+          <span class="chip-emoji">🥡</span>
+          <span class="chip-label">Chinese</span>
+        </button>
+        <button class="budget-chip" data-cat="japanese">
+          <span class="chip-emoji">🍣</span>
+          <span class="chip-label">Japanese</span>
+        </button>
+        <button class="budget-chip" data-cat="dessert">
+          <span class="chip-emoji">🧋</span>
+          <span class="chip-label">Sweet &amp; drinks</span>
         </button>
       </div>
       <p class="match-count" id="match-count"></p>
@@ -197,6 +209,6 @@
     <img id="lightbox-img" alt="Food photo" />
   </div>
 
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>
