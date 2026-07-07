@@ -526,7 +526,11 @@ function spin() {
 function renderResultInfo(r) {
   const tags = [];
   tags.push(`<span class="tag">${typeLabel(r.amenity)}</span>`);
-  if (r.cuisine) tags.push(`<span class="tag mint">${r.cuisine}</span>`);
+  // show the place's craving categories in the current language,
+  // matching the chips above; fall back to the raw OSM cuisine tag
+  const catNames = (r.cats || []).map((k) => T().chips[k]).filter(Boolean);
+  if (catNames.length) tags.push(`<span class="tag mint">${catNames.join(" · ")}</span>`);
+  else if (r.cuisine) tags.push(`<span class="tag mint">${escapeHtml(r.cuisine)}</span>`);
   tags.push(`<span class="tag butter">📍 ${fmtDist(r.dist)}</span>`);
   $("result-tags").innerHTML = tags.join("");
 
@@ -722,6 +726,7 @@ async function saveCheckin() {
     cuisine: r.cuisine || "",
     budget: r.budget || "mid",
     amenity: r.amenity || "",
+    cats: r.cats || [],
     dist: r.dist || 0,
     mood: checkin.mood,
     note: $("note-input").value.trim(),
