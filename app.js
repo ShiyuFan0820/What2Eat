@@ -66,7 +66,9 @@ const I18N = {
     btnSave: '<span class="btn-emoji">💾</span> Save to my diary',
     finding: '<span class="spinner">🌀</span> Finding you…',
     noGeo: "Your browser doesn't support location 😢 — type an address below instead 👇",
-    locDenied: "Location is blocked for this site 🙈 Turn it on in your browser (tap the aA / lock icon in the address bar → allow Location; iPhone: also check Settings → Privacy → Location Services), or just type an address below 👇",
+    locDeniedSafari: "Location was denied before, so Safari won't ask again 🙈 Easiest: just type an address below 👇 To re-enable: tap the letters “AA” on the left side of the address bar → Website Settings → Location → Allow. Can't find it? Go to Settings → Privacy & Security → Location Services → turn on Safari Websites.",
+    locDeniedMacSafari: "Location was denied 🙈 Easiest: just type an address below 👇 To re-enable: Safari menu → Settings → Websites → Location → set this site to Allow, then refresh.",
+    locDeniedChrome: "Location was denied before, so the browser won't ask again 🙈 Easiest: just type an address below 👇 To re-enable: tap the small 🔒 lock next to the web address → Permissions → Location → Allow, then refresh.",
     inAppTip: "💡 Looks like you're inside an app's built-in browser (WeChat, Instagram…) — location often doesn't work there. Tap the ⋯ menu and choose “Open in Browser”, or simply type an address below!",
     locUnavail: "Couldn't figure out where you are 😵 — try typing an address below 👇",
     locTimeout: "Location took too long ⏰ — try again?",
@@ -134,7 +136,9 @@ const I18N = {
     btnSave: '<span class="btn-emoji">💾</span> 存进我的日记',
     finding: '<span class="spinner">🌀</span> 正在定位…',
     noGeo: "你的浏览器不支持定位 😢——在下面输入地址也可以哦 👇",
-    locDenied: "这个网站的定位被禁用了 🙈 请在浏览器里打开它（点地址栏的 aA / 锁图标 → 允许定位；iPhone 还要检查 设置 → 隐私 → 定位服务），或者直接在下面输入地址 👇",
+    locDeniedSafari: "之前拒绝过定位，Safari 不会再弹窗了 🙈 最省事：直接在下面输入地址 👇 想重新开启：点地址栏左边的「AA」字母按钮 → 网站设置 → 位置 → 允许；找不到的话，去 手机设置 → 隐私与安全性 → 定位服务 → 打开「Safari 网站」。",
+    locDeniedMacSafari: "定位被拒绝了 🙈 最省事：直接在下面输入地址 👇 想重新开启：Safari 菜单 → 设置 → 网站 → 位置 → 把本站设为「允许」，然后刷新。",
+    locDeniedChrome: "之前拒绝过定位，浏览器不会再弹窗了 🙈 最省事：直接在下面输入地址 👇 想重新开启：点网址左边的 🔒 小锁图标 → 权限 → 位置 → 允许，然后刷新页面。",
     inAppTip: "💡 你好像是在 App 内置浏览器里打开的（微信 / 小红书等）——定位弹窗经常被拦截。点右上角 ⋯ 菜单选「在浏览器中打开」，或者直接在下面输入地址～",
     locUnavail: "找不到你在哪里 😵——试试在下面输入地址 👇",
     locTimeout: "定位超时啦 ⏰ 再试一次？",
@@ -302,6 +306,15 @@ function failStatus(key) {
 /* ---------------------------------------------------
    Geolocation
 --------------------------------------------------- */
+// Pick the "location denied" message that matches this user's browser,
+// so the instructions only mention buttons that actually exist for them.
+function deniedKey() {
+  const ua = navigator.userAgent;
+  const safari = /Safari/i.test(ua) && !/Chrome|CriOS|EdgiOS|Edg|FxiOS|OPR/i.test(ua);
+  if (!safari) return "locDeniedChrome";
+  return /iPhone|iPad|iPod/.test(ua) ? "locDeniedSafari" : "locDeniedMacSafari";
+}
+
 async function locate() {
   setStatus("", () => T().finding);
 
@@ -315,7 +328,7 @@ async function locate() {
   try {
     const perm = await navigator.permissions?.query({ name: "geolocation" });
     if (perm?.state === "denied") {
-      failStatus("locDenied");
+      failStatus(deniedKey());
       return;
     }
   } catch { /* Safari < 16 has no permissions API — just proceed */ }
@@ -328,7 +341,7 @@ async function locate() {
       fetchRestaurants();
     },
     (err) => {
-      const keys = { 1: "locDenied", 2: "locUnavail", 3: "locTimeout" };
+      const keys = { 1: deniedKey(), 2: "locUnavail", 3: "locTimeout" };
       failStatus(keys[err.code] || "locFail");
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
