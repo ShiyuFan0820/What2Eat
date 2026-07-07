@@ -12,17 +12,18 @@ const state = {
   lastPickId: null,
 };
 
-/* Craving categories — matched against real OSM data (amenity + cuisine
-   tags), unlike price which OSM rarely records. A place can belong to
-   several categories (e.g. a ramen restaurant is meal + noodle + japanese). */
+/* Craving categories — the mainstream cuisine split (Chinese, Japanese,
+   Korean, Western, SE Asian) plus noodles and café/sweets, matched against
+   real OSM cuisine/amenity tags. A place can belong to several categories
+   (e.g. a ramen shop is japanese + noodle). */
 const CATEGORIES = {
-  meal: (r) => r.amenity === "restaurant",
-  fast: (r) => r.amenity === "fast_food",
-  cafe: (r) => r.amenity === "cafe",
-  noodle: (r) => /noodle|ramen|udon|soba|pho/.test(r.cuisineRaw),
-  chinese: (r) => /chinese|dumpling|hotpot|hot_pot|sichuan|cantonese|dim_sum|wonton/.test(r.cuisineRaw),
-  japanese: (r) => /japanese|sushi|ramen|izakaya|teppanyaki|donburi|udon/.test(r.cuisineRaw),
-  dessert: (r) => /dessert|ice_cream|cake|bakery|bubble_tea|juice|tea|waffle|pancake|donut/.test(r.cuisineRaw) || r.amenity === "cafe",
+  chinese: (r) => /chinese|cantonese|sichuan|szechuan|hunan|dim_sum|dumpling|hotpot|hot_pot|wonton|peking|beijing|shanghai|taiwanese|hong_kong|hokkien|teochew|hainanese|zi_char|congee|bao/.test(r.cuisineRaw),
+  japanese: (r) => /japanese|sushi|ramen|izakaya|teppanyaki|donburi|tonkatsu|yakitori|yakiniku|okonomiyaki|takoyaki|kaiseki|omakase|udon|soba/.test(r.cuisineRaw),
+  korean: (r) => /korean|kimchi|bibimbap|bulgogi|samgyeopsal/.test(r.cuisineRaw),
+  western: (r) => /western|italian|pizza|pasta|french|american|burger|steak|sandwich|spanish|german|british|fish_and_chips|mexican|tex-mex|mediterranean|greek|portuguese|grill|bbq|barbecue/.test(r.cuisineRaw),
+  sea: (r) => /thai|vietnamese|malaysian|malay|indonesian|singaporean|filipino|laotian|burmese|khmer|cambodian|peranakan|nyonya|laksa|satay|pho/.test(r.cuisineRaw),
+  noodle: (r) => /noodle|ramen|udon|soba|pho|laksa|vermicelli|lamian|ban_mian|banmian|mee/.test(r.cuisineRaw),
+  cafe: (r) => r.amenity === "cafe" || /dessert|ice_cream|cake|bakery|bubble_tea|juice|tea|coffee|waffle|pancake|donut|toast/.test(r.cuisineRaw),
 };
 
 /* ---------------------------------------------------
@@ -45,7 +46,7 @@ const I18N = {
     addrFail: "Couldn't find that address 😢 — try another one?",
     btnLocate: '<span class="btn-emoji">🧭</span> Find me!',
     budgetTitle: '<span class="step-badge">2</span> What are you craving? 🍽️',
-    chips: { any: "Anything", meal: "Restaurant", fast: "Fast food", cafe: "Café", noodle: "Noodles", chinese: "Chinese", japanese: "Japanese", dessert: "Sweet & drinks" },
+    chips: { any: "Anything", chinese: "Chinese", japanese: "Japanese", korean: "Korean", western: "Western", sea: "SE Asian", noodle: "Noodles", cafe: "Café & sweets" },
     typeLabels: { restaurant: "🍽️ Restaurant", fast_food: "🍔 Fast food", cafe: "☕ Café", food_court: "🏬 Food court" },
     spinTitle: '<span class="step-badge">3</span> Ready? 🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> Pick my meal!',
@@ -113,7 +114,7 @@ const I18N = {
     addrFail: "找不到这个地址 😢——换一个试试？",
     btnLocate: '<span class="btn-emoji">🧭</span> 定位我！',
     budgetTitle: '<span class="step-badge">2</span> 今天想吃点啥？🍽️',
-    chips: { any: "都可以", meal: "正餐馆", fast: "快餐", cafe: "咖啡馆", noodle: "面食", chinese: "中餐", japanese: "日料", dessert: "甜点饮品" },
+    chips: { any: "都可以", chinese: "中餐", japanese: "日料", korean: "韩餐", western: "西餐", sea: "东南亚", noodle: "粉面", cafe: "咖啡甜点" },
     typeLabels: { restaurant: "🍽️ 正餐馆", fast_food: "🍔 快餐", cafe: "☕ 咖啡馆", food_court: "🏬 美食广场" },
     spinTitle: '<span class="step-badge">3</span> 准备好了吗？🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> 帮我选一家！',
