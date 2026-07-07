@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>What2Eat 🍜 — Let fate decide your meal!</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍜</text></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/@chinese-fonts/xiaolai/dist/Xiaolai/result.css" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=3" />
+</head>
+<body>
+
+  <!-- Floating food emoji background -->
+  <div class="floaties" aria-hidden="true"></div>
+
+  <main class="app">
+
+    <button class="lang-toggle" id="lang-toggle" title="Language / 语言">🌐 中文</button>
+
+    <!-- ===== Header ===== -->
+    <header class="header">
+      <div class="logo-bowl">🍜</div>
+      <h1 class="title">What<span class="accent">2</span>Eat</h1>
+      <p class="subtitle">Can't decide? Let the food genie pick for you! ✨</p>
+    </header>
+
+    <!-- ===== Pending check-in banner ===== -->
+    <div class="pending-banner hidden" id="pending-banner">
+      <span class="pending-text" id="pending-text"></span>
+      <div class="pending-actions">
+        <button class="btn btn-primary btn-small" id="btn-pending-checkin">📸 Check in!</button>
+        <button class="btn btn-ghost btn-small" id="btn-pending-dismiss">Skip</button>
+      </div>
+    </div>
+
+    <!-- ===== Step 1: Location ===== -->
+    <section class="card" id="step-location">
+      <h2 class="card-title"><span class="step-badge">1</span> Where are you? 📍</h2>
+      <p class="card-hint">We'll peek at restaurants within <strong>1 km</strong> of you.</p>
+      <div class="radius-row">
+        <label class="radius-label" id="radius-label" for="radius-select">📏 Search within</label>
+        <select class="radius-select" id="radius-select">
+          <option value="500">0.5 km</option>
+          <option value="1000" selected>1 km</option>
+          <option value="1500">1.5 km</option>
+          <option value="2000">2 km</option>
+          <option value="3000">3 km</option>
+          <option value="custom">Custom…</option>
+        </select>
+        <span class="radius-custom hidden" id="radius-custom">
+          <input type="number" id="radius-input" min="0.1" max="10" step="0.1" value="1" /> km
+        </span>
+      </div>
+      <button class="btn btn-primary" id="btn-locate">
+        <span class="btn-emoji">🧭</span> Find me!
+      </button>
+      <div class="addr-row">
+        <input class="addr-input" id="addr-input" value="Suntec City Singapore" placeholder="…or type an address / place" />
+        <button class="btn btn-secondary btn-small" id="btn-addr">🔍</button>
+      </div>
+      <div class="locate-status" id="locate-status"></div>
+    </section>
+
+    <!-- ===== Step 2: Budget ===== -->
+    <section class="card hidden" id="step-budget">
+      <h2 class="card-title"><span class="step-badge">2</span> What's your budget? 💰</h2>
+      <div class="budget-row" id="budget-row">
+        <button class="budget-chip" data-budget="cheap">
+          <span class="chip-emoji">🪙</span>
+          <span class="chip-label">Thrifty</span>
+          <span class="chip-price">$</span>
+        </button>
+        <button class="budget-chip selected" data-budget="mid">
+          <span class="chip-emoji">💵</span>
+          <span class="chip-label">Comfy</span>
+          <span class="chip-price">$$</span>
+        </button>
+        <button class="budget-chip" data-budget="fancy">
+          <span class="chip-emoji">💎</span>
+          <span class="chip-label">Treat day!</span>
+          <span class="chip-price">$$$</span>
+        </button>
+        <button class="budget-chip" data-budget="any">
+          <span class="chip-emoji">🤷</span>
+          <span class="chip-label">Anything</span>
+          <span class="chip-price">$?</span>
+        </button>
+      </div>
+      <p class="match-count" id="match-count"></p>
+    </section>
+
+    <!-- ===== Step 3: Spin! ===== -->
+    <section class="card hidden" id="step-spin">
+      <h2 class="card-title"><span class="step-badge">3</span> Ready? 🎰</h2>
+      <div class="slot-window" id="slot-window">
+        <div class="slot-text" id="slot-text">???</div>
+      </div>
+      <button class="btn btn-primary btn-big" id="btn-spin">
+        <span class="btn-emoji">🎲</span> Pick my meal!
+      </button>
+    </section>
+
+    <!-- ===== Result ===== -->
+    <section class="card result-card hidden" id="result">
+      <div class="confetti" id="confetti"></div>
+      <div class="result-emoji" id="result-emoji">🍕</div>
+      <h2 class="result-name" id="result-name">Restaurant Name</h2>
+      <div class="result-tags" id="result-tags"></div>
+      <p class="result-meta" id="result-meta"></p>
+      <div class="result-actions">
+        <a class="btn btn-secondary" id="btn-map" target="_blank" rel="noopener">
+          <span class="btn-emoji">🗺️</span> Guide me there
+        </a>
+        <button class="btn btn-primary" id="btn-checkin">
+          <span class="btn-emoji">📸</span> I ate here!
+        </button>
+        <button class="btn btn-ghost" id="btn-reroll">
+          <span class="btn-emoji">🔄</span> Nope, again!
+        </button>
+      </div>
+    </section>
+
+    <!-- ===== Nearby list ===== -->
+    <section class="card hidden" id="list-card">
+      <button class="list-toggle" id="list-toggle">
+        <span>👀 Peek at all nearby spots</span>
+        <span class="chevron" id="chevron">▾</span>
+      </button>
+      <ul class="resto-list hidden" id="resto-list"></ul>
+    </section>
+
+    <!-- ===== Food diary ===== -->
+    <section class="card" id="diary-card">
+      <div class="diary-head">
+        <h2 class="card-title">📖 Food Diary</h2>
+        <button class="btn btn-secondary btn-small" id="btn-report">
+          <span class="btn-emoji">✨</span> Monthly report
+        </button>
+      </div>
+      <p class="card-hint diary-empty" id="diary-empty">No yummy memories yet — go eat something and check in! 🥺</p>
+      <ul class="diary-list" id="diary-list"></ul>
+    </section>
+
+    <footer class="footer">
+      Made with 🧡 &amp; hunger · data from <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>
+    </footer>
+  </main>
+
+  <!-- ===== Check-in modal ===== -->
+  <div class="modal-overlay hidden" id="checkin-modal">
+    <div class="modal">
+      <button class="modal-close" id="checkin-close" aria-label="Close">✕</button>
+      <h2 class="modal-title">📸 Yummy check-in</h2>
+      <p class="modal-resto" id="checkin-resto">Restaurant</p>
+
+      <label class="photo-drop" id="photo-drop">
+        <input type="file" id="photo-input" accept="image/*" hidden />
+        <img id="photo-preview" class="photo-preview hidden" alt="Your food" />
+        <span class="photo-cta" id="photo-cta">🍽️<br />Tap to add a food pic!</span>
+      </label>
+
+      <div class="mood-row" id="mood-row">
+        <button class="mood-chip" data-mood="😍">😍</button>
+        <button class="mood-chip selected" data-mood="😋">😋</button>
+        <button class="mood-chip" data-mood="🙂">🙂</button>
+        <button class="mood-chip" data-mood="🥲">🥲</button>
+      </div>
+
+      <textarea class="note-input" id="note-input" rows="2" maxlength="140"
+        placeholder="One-line food memory… (optional)"></textarea>
+
+      <button class="btn btn-primary btn-big" id="btn-save-checkin">
+        <span class="btn-emoji">💾</span> Save to my diary
+      </button>
+    </div>
+  </div>
+
+  <!-- ===== Monthly report modal ===== -->
+  <div class="modal-overlay hidden" id="report-modal">
+    <div class="modal modal-report">
+      <button class="modal-close" id="report-close" aria-label="Close">✕</button>
+      <div class="report-nav">
+        <button class="nav-arrow" id="report-prev">◀</button>
+        <h2 class="report-month" id="report-month">July 2026</h2>
+        <button class="nav-arrow" id="report-next">▶</button>
+      </div>
+      <div id="report-body"></div>
+    </div>
+  </div>
+
+  <script src="app.js?v=2"></script>
+</body>
+</html>
