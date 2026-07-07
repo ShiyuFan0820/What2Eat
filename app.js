@@ -196,6 +196,7 @@ function switchLang() {
   lang = lang === "en" ? "zh" : "en";
   localStorage.setItem(LANG_KEY, lang);
   applyLang();
+  if (state.lastStatus) setStatus(state.lastStatus.cls, state.lastStatus.render);
   if (state.restaurants.length) updateMatchCount();
   renderDiary();
   showPendingBanner();
@@ -259,20 +260,36 @@ function guessBudget(tags) {
   const cuisine = (tags.cuisine || "").toLowerCase();
   if (tags.amenity === "fast_food" || tags.amenity === "food_court") return "cheap";
   if (FANCY_HINTS.test(cuisine)) return "fancy";
-  if (tags.amenity === "cafe") return Math.random() < 0.5 ? "cheap" : "mid";
+  if (tags.amenity === "cafe") return "cheap";
   return "mid";
+}
+
+/* ---------------------------------------------------
+   Status line — stores a render function so the text
+   can be re-translated when the language switches
+--------------------------------------------------- */
+function setStatus(cls, render) {
+  state.lastStatus = { cls, render };
+  const el = $("locate-status");
+  el.className = "locate-status" + (cls ? " " + cls : "");
+  el.innerHTML = render();
+}
+
+function failStatus(key) {
+  setStatus("err", () => T()[key]);
+  $("step-location").classList.add("shake");
+  setTimeout(() => $("step-location").classList.remove("shake"), 500);
+  highlightAddr(); // point users at the address fallback
 }
 
 /* ---------------------------------------------------
    Geolocation
 --------------------------------------------------- */
 async function locate() {
-  const status = $("locate-status");
-  status.className = "locate-status";
-  status.innerHTML = T().finding;
+  setStatus("", () => T().finding);
 
   if (!navigator.geolocation) {
-    fail(T().noGeo);
+    failStatus("noGeo");
     return;
   }
 
@@ -281,7 +298,7 @@ async function locate() {
   try {
     const perm = await navigator.permissions?.query({ name: "geolocation" });
     if (perm?.state === "denied") {
-      fail(T().locDenied);
+      failStatus("locDenied");
       return;
     }
   } catch { /* Safari < 16 has no permissions API — just proceed */ }
@@ -290,24 +307,15 @@ async function locate() {
     (pos) => {
       state.lat = pos.coords.latitude;
       state.lon = pos.coords.longitude;
-      status.className = "locate-status ok";
-      status.innerHTML = T().gotYou;
+      setStatus("ok", () => T().gotYou);
       fetchRestaurants();
     },
     (err) => {
-      const msgs = { 1: T().locDenied, 2: T().locUnavail, 3: T().locTimeout };
-      fail(msgs[err.code] || T().locFail);
+      const keys = { 1: "locDenied", 2: "locUnavail", 3: "locTimeout" };
+      failStatus(keys[err.code] || "locFail");
     },
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
   );
-
-  function fail(msg) {
-    status.className = "locate-status err";
-    status.textContent = msg;
-    $("step-location").classList.add("shake");
-    setTimeout(() => $("step-location").classList.remove("shake"), 500);
-    highlightAddr(); // point users at the address fallback
-  }
 }
 
 function highlightAddr() {
@@ -335,7 +343,6 @@ const OVERPASS_ENDPOINTS = [
 ];
 
 async function fetchRestaurants() {
-  const status = $("locate-status");
   const query = `
     [out:json][timeout:25];
     (
@@ -356,8 +363,7 @@ async function fetchRestaurants() {
   }
 
   if (!data) {
-    status.className = "locate-status err";
-    status.textContent = T().dbFail;
+    setStatus("err", () => T().dbFail);
     return;
   }
 
@@ -382,13 +388,12 @@ async function fetchRestaurants() {
     .sort((a, b) => a.dist - b.dist);
 
   if (state.restaurants.length === 0) {
-    status.className = "locate-status err";
-    status.textContent = T().noResto(fmtRadius());
+    setStatus("err", () => T().noResto(fmtRadius()));
     return;
   }
 
-  status.className = "locate-status ok";
-  status.textContent = T().found(state.restaurants.length, fmtRadius());
+  const n = state.restaurants.length;
+  setStatus("ok", () => T().found(n, fmtRadius()));
 
   $("step-budget").classList.remove("hidden");
   $("step-spin").classList.remove("hidden");
@@ -418,9 +423,7 @@ function setRadius(meters) {
 async function searchAddress() {
   const q = $("addr-input").value.trim();
   if (!q) return;
-  const status = $("locate-status");
-  status.className = "locate-status";
-  status.textContent = T().addrSearching;
+  setStatus("", () => T().addrSearching);
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=${T().locale}&q=${encodeURIComponent(q)}`;
     const res = await fetch(url);
@@ -428,12 +431,12 @@ async function searchAddress() {
     if (!results.length) throw new Error("no match");
     state.lat = parseFloat(results[0].lat);
     state.lon = parseFloat(results[0].lon);
-    status.className = "locate-status ok";
-    status.textContent = `📍 ${results[0].display_name.split(",").slice(0, 2).join(",")}`;
+    const placeName = results[0].display_name.split(",").slice(0, 2).join(",");
+    setStatus("ok", () => `📍 ${escapeHtml(placeName)}`);
     fetchRestaurants();
   } catch {
-    status.className = "locate-status err";
-    status.textContent = T().addrFail;
+    setStatus("err", () => T().addrFail);
+    highlightAddr();
   }
 }
 
@@ -804,10 +807,24 @@ async function renderReport() {
   const photos = monthVisits.filter((v) => v.photo);
   const yums = monthVisits.filter((v) => v.mood === "😍" || v.mood === "😋").length;
 
-  const nameCounts = {};
-  monthVisits.forEach((v) => (nameCounts[v.name] = (nameCounts[v.name] || 0) + 1));
-  const [topName, topCount] = Object.entries(nameCounts).sort((a, b) => b[1] - a[1])[0];
-  const topEmoji = monthVisits.find((v) => v.name === topName).emoji;
+  // Rank spots: visit count first, then how happy the meals made you,
+  // then whichever you discovered first — not just insertion order.
+  const MOOD_PTS = { "😍": 3, "😋": 2, "🙂": 1, "🥲": 0 };
+  const spots = {};
+  monthVisits.forEach((v) => {
+    const s = (spots[v.name] ??= { count: 0, mood: 0, emoji: v.emoji, first: v.when });
+    s.count += 1;
+    s.mood += MOOD_PTS[v.mood] ?? 1;
+    if (v.when < s.first) s.first = v.when;
+  });
+  const [topName, top] = Object.entries(spots).sort(
+    (a, b) =>
+      b[1].count - a[1].count ||
+      b[1].mood - a[1].mood ||
+      a[1].first.localeCompare(b[1].first)
+  )[0];
+  const topCount = top.count;
+  const topEmoji = top.emoji;
 
   const cuisineCounts = {};
   monthVisits.forEach((v) => { if (v.cuisine) cuisineCounts[v.cuisine] = (cuisineCounts[v.cuisine] || 0) + 1; });
@@ -925,6 +942,19 @@ $("diary-list").addEventListener("click", async (e) => {
     await deleteVisit(Number(li.dataset.id));
     renderDiary();
   }
+});
+
+/* --- photo lightbox: click any food photo to see it full size --- */
+function openLightbox(src) {
+  $("lightbox-img").src = src;
+  $("lightbox").classList.remove("hidden");
+}
+$("lightbox").addEventListener("click", () => $("lightbox").classList.add("hidden"));
+$("report-body").addEventListener("click", (e) => {
+  if (e.target.matches(".photo-wall img")) openLightbox(e.target.src);
+});
+$("diary-list").addEventListener("click", (e) => {
+  if (e.target.classList.contains("diary-thumb")) openLightbox(e.target.src);
 });
 
 $("btn-report").addEventListener("click", () => openReport(new Date()));
