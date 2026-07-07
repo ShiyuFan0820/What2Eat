@@ -50,9 +50,10 @@ const I18N = {
     notePlaceholder: "One-line food memory… (optional)",
     btnSave: '<span class="btn-emoji">💾</span> Save to my diary',
     finding: '<span class="spinner">🌀</span> Finding you…',
-    noGeo: "Your browser doesn't support location 😢",
-    locDenied: "Location permission denied — please allow it and try again 🙏",
-    locUnavail: "Couldn't figure out where you are 😵",
+    noGeo: "Your browser doesn't support location 😢 — type an address below instead 👇",
+    locDenied: "Location is blocked for this site 🙈 Turn it on in your browser (tap the aA / lock icon in the address bar → allow Location; iPhone: also check Settings → Privacy → Location Services), or just type an address below 👇",
+    inAppTip: "💡 Looks like you're inside an app's built-in browser (WeChat, Instagram…) — location often doesn't work there. Tap the ⋯ menu and choose “Open in Browser”, or simply type an address below!",
+    locUnavail: "Couldn't figure out where you are 😵 — try typing an address below 👇",
     locTimeout: "Location took too long ⏰ — try again?",
     locFail: "Something went wrong 😢",
     gotYou: "✅ Got you! Now sniffing out yummy places nearby…",
@@ -116,9 +117,10 @@ const I18N = {
     notePlaceholder: "一句话记录这顿饭…（选填）",
     btnSave: '<span class="btn-emoji">💾</span> 存进我的日记',
     finding: '<span class="spinner">🌀</span> 正在定位…',
-    noGeo: "你的浏览器不支持定位 😢",
-    locDenied: "定位权限被拒绝了——请允许后再试一次 🙏",
-    locUnavail: "找不到你在哪里 😵",
+    noGeo: "你的浏览器不支持定位 😢——在下面输入地址也可以哦 👇",
+    locDenied: "这个网站的定位被禁用了 🙈 请在浏览器里打开它（点地址栏的 aA / 锁图标 → 允许定位；iPhone 还要检查 设置 → 隐私 → 定位服务），或者直接在下面输入地址 👇",
+    inAppTip: "💡 你好像是在 App 内置浏览器里打开的（微信 / 小红书等）——定位弹窗经常被拦截。点右上角 ⋯ 菜单选「在浏览器中打开」，或者直接在下面输入地址～",
+    locUnavail: "找不到你在哪里 😵——试试在下面输入地址 👇",
     locTimeout: "定位超时啦 ⏰ 再试一次？",
     locFail: "出了点小问题 😢",
     gotYou: "✅ 找到你啦！正在搜寻附近的美味…",
@@ -163,6 +165,7 @@ function applyLang() {
   set(".subtitle", d.subtitle);
   set("#step-location .card-title", d.locTitle);
   set("#step-location .card-hint", d.locHint(fmtRadius()));
+  set("#browser-tip", d.inAppTip);
   set("#radius-label", d.radiusLabel);
   document.querySelector('#radius-select option[value="custom"]').textContent = d.customOpt;
   $("addr-input").placeholder = d.addrPlaceholder;
@@ -263,7 +266,7 @@ function guessBudget(tags) {
 /* ---------------------------------------------------
    Geolocation
 --------------------------------------------------- */
-function locate() {
+async function locate() {
   const status = $("locate-status");
   status.className = "locate-status";
   status.innerHTML = T().finding;
@@ -272,6 +275,16 @@ function locate() {
     fail(T().noGeo);
     return;
   }
+
+  // If permission is already permanently denied, the browser will never
+  // show a prompt — explain how to fix it instead of failing silently.
+  try {
+    const perm = await navigator.permissions?.query({ name: "geolocation" });
+    if (perm?.state === "denied") {
+      fail(T().locDenied);
+      return;
+    }
+  } catch { /* Safari < 16 has no permissions API — just proceed */ }
 
   navigator.geolocation.getCurrentPosition(
     (pos) => {
@@ -293,7 +306,24 @@ function locate() {
     status.textContent = msg;
     $("step-location").classList.add("shake");
     setTimeout(() => $("step-location").classList.remove("shake"), 500);
+    highlightAddr(); // point users at the address fallback
   }
+}
+
+function highlightAddr() {
+  const input = $("addr-input");
+  input.classList.remove("addr-attention");
+  void input.offsetWidth; // restart animation
+  input.classList.add("addr-attention");
+  setTimeout(() => input.classList.remove("addr-attention"), 3500);
+}
+
+/* In-app browsers (WeChat, Instagram, Facebook, Xiaohongshu…) usually
+   suppress the geolocation prompt entirely — warn users up front. */
+function checkInAppBrowser() {
+  const inApp = /MicroMessenger|WeChat|Weibo|QQ\/|Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|XiaoHongShu|xhsminiapp/i
+    .test(navigator.userAgent);
+  if (inApp) $("browser-tip").classList.remove("hidden");
 }
 
 /* ---------------------------------------------------
@@ -809,6 +839,7 @@ async function renderReport() {
 --------------------------------------------------- */
 spawnFloaties();
 applyLang();
+checkInAppBrowser();
 renderDiary();
 showPendingBanner();
 
