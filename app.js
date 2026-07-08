@@ -76,7 +76,9 @@ const I18N = {
     gotYou: "✅ Got you! Now sniffing out yummy places nearby…",
     dbFail: "Couldn't reach the restaurant database 😢 — check your internet and try again.",
     noResto: (r) => `No restaurants found within ${r} 🏜️ — try a bigger radius?`,
-    found: (n, r) => `🎉 Found ${n} tasty spots within ${r}!`,
+    found: (n, r, place) => place
+      ? `🎉 Found ${n} tasty spots within ${r} of ${place}!`
+      : `🎉 Found ${n} tasty spots within ${r}!`,
     unitM: "m", unitKm: "km",
     matchSome: (n) => `${n} spot${n > 1 ? "s" : ""} match your craving 🤤`,
     matchNone: "No exact matches — I'll pick from everything nearby 😉",
@@ -146,7 +148,9 @@ const I18N = {
     gotYou: "✅ 找到你啦！正在搜寻附近的美味…",
     dbFail: "连不上餐厅数据库 😢——检查一下网络再试试吧。",
     noResto: (r) => `${r} 内没有找到餐厅 🏜️——把范围调大一点？`,
-    found: (n, r) => `🎉 在 ${r} 内找到 ${n} 家好店！`,
+    found: (n, r, place) => place
+      ? `🎉 在 ${place} 附近 ${r} 内找到 ${n} 家好店！`
+      : `🎉 在 ${r} 内找到 ${n} 家好店！`,
     unitM: "米", unitKm: "公里",
     matchSome: (n) => `有 ${n} 家店符合你的口味 🤤`,
     matchNone: "没有完全符合口味的——我会从附近所有店里帮你挑 😉",
@@ -334,10 +338,14 @@ async function locate() {
   } catch { /* Safari < 16 has no permissions API — just proceed */ }
 
   navigator.geolocation.getCurrentPosition(
-    (pos) => {
+    async (pos) => {
       state.lat = pos.coords.latitude;
       state.lon = pos.coords.longitude;
+      // the address box is only a fallback input — leftover text would
+      // masquerade as the current location, so clear it on GPS success
+      $("addr-input").value = "";
       setStatus("ok", () => T().gotYou);
+      await reverseGeocode();
       fetchRestaurants();
     },
     (err) => {
@@ -426,7 +434,7 @@ async function fetchRestaurants() {
   }
 
   const n = state.restaurants.length;
-  setStatus("ok", () => T().found(n, fmtRadius()));
+  setStatus("ok", () => T().found(n, fmtRadius(), escapeHtml(state.placeName || "")));
 
   $("step-budget").classList.remove("hidden");
   $("step-spin").classList.remove("hidden");
@@ -449,6 +457,21 @@ function setRadius(meters) {
   if (state.lat != null) fetchRestaurants(); // re-search with the new radius
 }
 
+/* Turn GPS coordinates back into a human-readable place name so the
+   status line can say WHERE it searched, not just how many it found. */
+async function reverseGeocode() {
+  state.placeName = "";
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.lat}&lon=${state.lon}&zoom=16&accept-language=${T().locale}`
+    );
+    const d = await res.json();
+    const a = d.address || {};
+    state.placeName =
+      a.neighbourhood || a.suburb || a.quarter || a.road || a.city_district || a.city || d.name || "";
+  } catch { /* no name is fine — the found message falls back */ }
+}
+
 /* ---------------------------------------------------
    Address search fallback (OSM Nominatim) — for when
    GPS is unavailable or permission can't be granted
@@ -465,6 +488,7 @@ async function searchAddress() {
     state.lat = parseFloat(results[0].lat);
     state.lon = parseFloat(results[0].lon);
     const placeName = results[0].display_name.split(",").slice(0, 2).join(",");
+    state.placeName = results[0].display_name.split(",")[0];
     setStatus("ok", () => `📍 ${escapeHtml(placeName)}`);
     fetchRestaurants();
   } catch {
