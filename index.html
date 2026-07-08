@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@500;600;700&display=swap" rel="stylesheet" />
   <link href="https://unpkg.com/@chinese-fonts/xiaolai/dist/Xiaolai/result.css" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=10" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 
@@ -102,6 +102,13 @@
           <span class="chip-label">Café &amp; sweets</span>
         </button>
       </div>
+      <div class="price-row" id="price-row">
+        <button class="price-chip selected" data-budget="any">Any price</button>
+        <button class="price-chip" data-budget="cheap">🪙 $</button>
+        <button class="price-chip" data-budget="mid">💵 $$</button>
+        <button class="price-chip" data-budget="fancy">💎 $$$</button>
+      </div>
+      <p class="price-hint" id="price-hint">💡 Prices are rough estimates from venue type</p>
       <p class="match-count" id="match-count"></p>
     </section>
 
@@ -209,6 +216,6 @@
     <img id="lightbox-img" alt="Food photo" />
   </div>
 
-  <script src="app.js?v=12"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>

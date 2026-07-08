@@ -8,6 +8,7 @@ const state = {
   lon: null,
   restaurants: [],   // all found nearby
   category: "any",
+  budget: "any",     // estimated price filter, works together with category
   spinning: false,
   lastPickId: null,
 };
@@ -48,6 +49,8 @@ const I18N = {
     budgetTitle: '<span class="step-badge">2</span> What are you craving? 🍽️',
     chips: { any: "Anything", chinese: "Chinese", japanese: "Japanese", korean: "Korean", western: "Western", sea: "SE Asian", noodle: "Noodles", cafe: "Café & sweets" },
     typeLabels: { restaurant: "🍽️ Restaurant", fast_food: "🍔 Fast food", cafe: "☕ Café", food_court: "🏬 Food court" },
+    priceChips: { any: "Any price", cheap: "🪙 $", mid: "💵 $$", fancy: "💎 $$$" },
+    priceHint: "💡 Prices are rough estimates from venue type — data sources don't publish real prices",
     spinTitle: '<span class="step-badge">3</span> Ready? 🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> Pick my meal!',
     btnMap: '<span class="btn-emoji">🗺️</span> Guide me there',
@@ -120,6 +123,8 @@ const I18N = {
     budgetTitle: '<span class="step-badge">2</span> 今天想吃点啥？🍽️',
     chips: { any: "都可以", chinese: "中餐", japanese: "日料", korean: "韩餐", western: "西餐", sea: "东南亚", noodle: "粉面", cafe: "咖啡甜点" },
     typeLabels: { restaurant: "🍽️ 正餐馆", fast_food: "🍔 快餐", cafe: "☕ 咖啡馆", food_court: "🏬 美食广场" },
+    priceChips: { any: "不限价", cheap: "🪙 实惠 $", mid: "💵 适中 $$", fancy: "💎 高档 $$$" },
+    priceHint: "💡 价格是按店铺类型估算的——数据源没有真实价格",
     spinTitle: '<span class="step-badge">3</span> 准备好了吗？🎰',
     btnSpin: '<span class="btn-emoji">🎲</span> 帮我选一家！',
     btnMap: '<span class="btn-emoji">🗺️</span> 带我去！',
@@ -198,6 +203,9 @@ function applyLang() {
   set("#step-budget .card-title", d.budgetTitle);
   for (const k of Object.keys(d.chips))
     set(`.budget-chip[data-cat="${k}"] .chip-label`, d.chips[k]);
+  for (const k of Object.keys(d.priceChips))
+    set(`.price-chip[data-budget="${k}"]`, d.priceChips[k]);
+  set("#price-hint", d.priceHint);
   set("#step-spin .card-title", d.spinTitle);
   set("#btn-spin", d.btnSpin);
   set("#btn-map", d.btnMap);
@@ -272,7 +280,8 @@ function emojiFor(tags) {
   return "🍽️";
 }
 
-const FANCY_HINTS = /fine_dining|french|steak|sushi|omakase|teppanyaki|kaiseki/;
+// note: no generic "sushi" here — sushi chains are often cheap; omakase isn't
+const FANCY_HINTS = /fine_dining|fine dining|haute|french|steak|omakase|teppanyaki|kaiseki/;
 
 function guessBudget(tags) {
   // Real OSM price hints first
@@ -586,16 +595,22 @@ function haversine(lat1, lon1, lat2, lon2) {
 /* ---------------------------------------------------
    Craving filter
 --------------------------------------------------- */
+function byFilters() {
+  const byCat = state.category === "any"
+    ? state.restaurants
+    : state.restaurants.filter((r) => r.cats.includes(state.category));
+  const both = state.budget === "any" ? byCat : byCat.filter((r) => r.budget === state.budget);
+  return { byCat, both };
+}
+
 function candidates() {
-  if (state.category === "any") return state.restaurants;
-  const matches = state.restaurants.filter((r) => r.cats.includes(state.category));
-  return matches.length ? matches : state.restaurants; // graceful fallback
+  const { byCat, both } = byFilters();
+  // graceful fallbacks: relax price first, then craving
+  return both.length ? both : byCat.length ? byCat : state.restaurants;
 }
 
 function updateMatchCount() {
-  const strict = state.category === "any"
-    ? state.restaurants.length
-    : state.restaurants.filter((r) => r.cats.includes(state.category)).length;
+  const strict = byFilters().both.length;
   $("match-count").textContent = strict ? T().matchSome(strict) : T().matchNone;
 }
 
@@ -648,6 +663,7 @@ function renderResultInfo(r) {
   const catNames = (r.cats || []).map((k) => T().chips[k]).filter(Boolean);
   if (catNames.length) tags.push(`<span class="tag mint">${catNames.join(" · ")}</span>`);
   else if (r.cuisine) tags.push(`<span class="tag mint">${escapeHtml(r.cuisine)}</span>`);
+  tags.push(`<span class="tag">${budgetLabel(r.budget)}</span>`);
   tags.push(`<span class="tag butter">📍 ${fmtDist(r.dist)}</span>`);
   $("result-tags").innerHTML = tags.join("");
 
@@ -1036,6 +1052,15 @@ $("cat-row").addEventListener("click", (e) => {
   document.querySelectorAll(".budget-chip").forEach((c) => c.classList.remove("selected"));
   chip.classList.add("selected");
   state.category = chip.dataset.cat;
+  updateMatchCount();
+});
+
+$("price-row").addEventListener("click", (e) => {
+  const chip = e.target.closest(".price-chip");
+  if (!chip) return;
+  document.querySelectorAll(".price-chip").forEach((c) => c.classList.remove("selected"));
+  chip.classList.add("selected");
+  state.budget = chip.dataset.budget;
   updateMatchCount();
 });
 
