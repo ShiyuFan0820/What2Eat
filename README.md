@@ -40,8 +40,8 @@ python3 -m http.server 8642
 ## 🛠️ Tech Stack · 技术栈
 
 - Vanilla HTML / CSS / JavaScript — no frameworks
-- [Overpass API](https://overpass-api.de/) (OpenStreetMap) — restaurant data, no API key needed
-- [Nominatim](https://nominatim.org/) — address geocoding
+- [TomTom Search API](https://developer.tomtom.com/) + [Overpass API](https://overpass-api.de/) (OpenStreetMap) — restaurant data from both sources, merged and deduplicated; either one alone keeps the site working
+- [Nominatim](https://nominatim.org/) — address geocoding &amp; reverse geocoding
 - IndexedDB — local storage for diary entries and photos (compressed client-side)
 - Fonts: [Baloo 2](https://fonts.google.com/specimen/Baloo+2), [Quicksand](https://fonts.google.com/specimen/Quicksand), [小赖字体 Xiaolai](https://github.com/lxgw/kose-font) via [中文网字计划](https://chinese-font.netlify.app/)
 

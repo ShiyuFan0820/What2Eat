@@ -57,7 +57,7 @@ const I18N = {
     diaryTitle: "📖 Food Diary",
     btnReport: '<span class="btn-emoji">✨</span> Monthly report',
     diaryEmpty: "No yummy memories yet — go eat something and check in! 🥺",
-    footer: 'Made with 🧡 &amp; hunger · data from <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
+    footer: 'Made with 🧡 &amp; hunger · data from <a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> &amp; <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
     pendingCheckin: "📸 Check in!",
     pendingSkip: "Skip",
     checkinTitle: "📸 Yummy check-in",
@@ -129,7 +129,7 @@ const I18N = {
     diaryTitle: "📖 美食日记",
     btnReport: '<span class="btn-emoji">✨</span> 月度报告',
     diaryEmpty: "还没有美味回忆——快去吃点好吃的再来打卡吧！🥺",
-    footer: '用 🧡 和饥饿感制作 · 数据来自 <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
+    footer: '用 🧡 和饥饿感制作 · 数据来自 <a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> 和 <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
     pendingCheckin: "📸 打卡！",
     pendingSkip: "跳过",
     checkinTitle: "📸 美味打卡",
@@ -380,7 +380,12 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.kumi.systems/api/interpreter",
 ];
 
-async function fetchRestaurants() {
+/* TomTom Search API — richer, more up-to-date business data than OSM.
+   This key is public by nature (static site); it must be restricted to
+   this site's domain in the TomTom developer dashboard. */
+const TOMTOM_KEY = "M6lbCGiTkrmkVFWTDx705iaFf9afCcUa";
+
+async function fetchOverpass() {
   const query = `
     [out:json][timeout:25];
     (
@@ -399,13 +404,9 @@ async function fetchRestaurants() {
       break;
     } catch { /* try next mirror */ }
   }
+  if (!data) throw new Error("overpass unavailable");
 
-  if (!data) {
-    setStatus("err", () => T().dbFail);
-    return;
-  }
-
-  state.restaurants = (data.elements || [])
+  return (data.elements || [])
     .map((el) => {
       const lat = el.lat ?? el.center?.lat;
       const lon = el.lon ?? el.center?.lon;
@@ -425,7 +426,84 @@ async function fetchRestaurants() {
       r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
       return r;
     })
-    .filter(Boolean)
+    .filter(Boolean);
+}
+
+async function fetchTomTom() {
+  // 7315 = restaurants, 9376 = cafés/pubs; each nearbySearch call returns
+  // at most 100 places, so query the two category trees separately
+  const base = `https://api.tomtom.com/search/2/nearbySearch/.json?key=${TOMTOM_KEY}` +
+    `&lat=${state.lat}&lon=${state.lon}&radius=${state.radius}&limit=100&categorySet=`;
+  const pages = await Promise.all(
+    ["7315", "9376"].map((cat) =>
+      fetch(base + cat).then((res) => (res.ok ? res.json() : Promise.reject(new Error("tomtom " + res.status)))))
+  );
+
+  const out = [];
+  for (const page of pages) {
+    for (const item of page.results || []) {
+      const poi = item.poi || {};
+      if (!poi.name || !item.position) continue;
+      const cats = (poi.categories || []).map((c) => c.toLowerCase().replace(/é/g, "e"));
+      const code = poi.classifications?.[0]?.code || "";
+      const amenity = cats.includes("fast food") ? "fast_food" : code === "CAFE_PUB" ? "cafe" : "restaurant";
+      const cuisineRaw = cats.join(" ");
+      const tagsLike = { cuisine: cuisineRaw, amenity };
+      const r = {
+        id: "tt" + item.id,
+        name: poi.name,
+        lat: item.position.lat,
+        lon: item.position.lon,
+        emoji: emojiFor(tagsLike),
+        budget: guessBudget(tagsLike),
+        cuisine: cats.find((c) => c !== "restaurant" && c !== "cafe/pub") || "",
+        cuisineRaw,
+        amenity,
+        dist: Math.round(item.dist ?? haversine(state.lat, state.lon, item.position.lat, item.position.lon)),
+      };
+      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      out.push(r);
+    }
+  }
+  return out;
+}
+
+/* Merge sources: the same place often appears in both with slightly
+   different names/coordinates ("Shake Shack" vs "Shake Shack Suntec"),
+   so treat prefix-matching names within 150 m as duplicates. */
+function dedupePlaces(list) {
+  const norm = (s) => s.toLowerCase().replace(/[^a-z0-9一-鿿]+/g, "");
+  const buckets = {};
+  const kept = [];
+  for (const r of list) {
+    const n = norm(r.name);
+    const bucket = (buckets[n.slice(0, 6)] ||= []);
+    const dup = bucket.some(
+      (k) => (k._n.startsWith(n) || n.startsWith(k._n)) && haversine(r.lat, r.lon, k.lat, k.lon) < 150
+    );
+    if (dup) continue;
+    r._n = n;
+    bucket.push(r);
+    kept.push(r);
+  }
+  kept.forEach((r) => delete r._n);
+  return kept;
+}
+
+async function fetchRestaurants() {
+  // query both sources in parallel; either one failing is fine
+  const [tomtom, osm] = await Promise.all([
+    fetchTomTom().catch(() => null),
+    fetchOverpass().catch(() => null),
+  ]);
+
+  if (!tomtom && !osm) {
+    setStatus("err", () => T().dbFail);
+    return;
+  }
+
+  // TomTom entries first so its fresher data wins deduplication
+  state.restaurants = dedupePlaces([...(tomtom || []), ...(osm || [])])
     .sort((a, b) => a.dist - b.dist);
 
   if (state.restaurants.length === 0) {
