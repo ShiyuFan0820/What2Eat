@@ -531,6 +531,8 @@ function spin() {
 
   state.spinning = true;
   $("result").classList.add("hidden");
+  // center the slot machine so re-rolls from the result card are visible
+  $("step-spin").scrollIntoView({ behavior: "smooth", block: "center" });
   const slotText = $("slot-text");
   slotText.classList.add("rolling");
 
