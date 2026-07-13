@@ -14,18 +14,31 @@ const state = {
 };
 
 /* Craving categories — the mainstream cuisine split (Chinese, Japanese,
-   Korean, Western, SE Asian) plus noodles and café/sweets, matched against
-   real OSM cuisine/amenity tags. A place can belong to several categories
-   (e.g. a ramen shop is japanese + noodle). */
-const CATEGORIES = {
-  chinese: (r) => /chinese|cantonese|sichuan|szechuan|hunan|dim_sum|dumpling|hotpot|hot_pot|wonton|peking|beijing|shanghai|taiwanese|hong_kong|hokkien|teochew|hainanese|zi_char|congee|bao/.test(r.cuisineRaw),
-  japanese: (r) => /japanese|sushi|ramen|izakaya|teppanyaki|donburi|tonkatsu|yakitori|yakiniku|okonomiyaki|takoyaki|kaiseki|omakase|udon|soba/.test(r.cuisineRaw),
-  korean: (r) => /korean|kimchi|bibimbap|bulgogi|samgyeopsal/.test(r.cuisineRaw),
-  western: (r) => /western|italian|pizza|pasta|french|american|burger|steak|sandwich|spanish|german|british|fish_and_chips|mexican|tex-mex|mediterranean|greek|portuguese|grill|bbq|barbecue/.test(r.cuisineRaw),
-  sea: (r) => /thai|vietnamese|malaysian|malay|indonesian|singaporean|filipino|laotian|burmese|khmer|cambodian|peranakan|nyonya|laksa|satay|pho/.test(r.cuisineRaw),
-  noodle: (r) => /noodle|ramen|udon|soba|pho|laksa|vermicelli|lamian|ban_mian|banmian|mee/.test(r.cuisineRaw),
-  cafe: (r) => r.amenity === "cafe" || /dessert|ice_cream|cake|bakery|bubble_tea|juice|tea|coffee|waffle|pancake|donut|toast/.test(r.cuisineRaw),
+   Korean, Western, SE Asian) plus noodles and café/sweets.
+
+   Each pattern is matched against BOTH the place name and its cuisine
+   tags, in Chinese and English. Matching the NAME is what rescues places
+   whose data source only tagged them "restaurant"/"asian_restaurant" —
+   e.g. 周氏砂锅米线 has no noodle tag, but "米线 / Rice Noodles" is right
+   there in the name. A place can belong to several categories (a ramen
+   shop is japanese + noodle). */
+const CAT_PATTERNS = {
+  chinese: /chinese|cantonese|sichuan|szechuan|hunan|dim.?sum|dumpling|hotpot|hot_pot|wonton|congee|teochew|hokkien|zi.?char|中餐|中式|中华|中華|川菜|川味|水煮|湘菜|粤菜|粵菜|港式|茶餐厅|茶餐廳|砂锅|砂鍋|煲仔|火锅|火鍋|麻辣|香锅|小笼|小籠|灌汤|水饺|饺子|餃子|包子|肉包|烧腊|燒臘|烧鹅|燒鵝|卤味|滷味|大排档|大牌档|云吞|雲吞|馄饨|餛飩|点心|點心|粥品|生煎|兰州|蘭州|沙县/i,
+  japanese: /japanese|sushi|ramen|izakaya|teppanyaki|donburi|tonkatsu|yakitori|yakiniku|okonomiyaki|takoyaki|kaiseki|omakase|udon|soba|unagi|gyoza|日本|日式|寿司|壽司|刺身|居酒屋|烧鸟|燒鳥|天妇罗|天婦羅|丼|铁板烧|鐵板燒|寿喜烧|壽喜燒|拉面|拉麵|乌冬|烏冬|荞麦|蕎麥|和牛|鳗鱼|鰻魚/i,
+  korean: /korean|kimchi|bibimbap|bulgogi|samgyeopsal|tteokbokki|jjigae|gochujang|韩国|韓國|韩式|韓式|韩式炸鸡|泡菜|拌饭|拌飯|部队锅|部隊鍋|石锅|石鍋|烤肉|炸酱面|年糕|辣白菜|참|김/i,
+  western: /western|italian|pizza|pasta|spaghetti|french|american|burger|steak|sandwich|spanish|german|british|fish.?and.?chips|mexican|tex.?mex|mediterranean|greek|portuguese|grill|bbq|barbecue|bistro|brunch|diner|西餐|意大利|義大利|意式|披萨|披薩|比萨|意面|意麵|意粉|牛排|牛扒|扒房|汉堡|漢堡|三明治|沙拉|沙律|薯条|炸鸡|扒/i,
+  sea: /thai|vietnamese|malaysian|\bmalay\b|indonesian|singaporean|filipino|laotian|burmese|khmer|cambodian|peranakan|nyonya|laksa|satay|\bpho\b|nasi|tom.?yum|rendang|泰国|泰式|泰式|越南|马来|馬來|印尼|新加坡|叻沙|沙爹|冬阴功|冬蔭功|海南鸡|海南雞|肉骨茶|娘惹|南洋|咖喱|咖哩|椰浆|河粉/i,
+  noodle: /noodle|ramen|udon|soba|\bpho\b|laksa|vermicelli|lamian|ban.?mian|\bmee\b|spaghetti|pasta|米线|米線|米粉|河粉|粿条|粿條|粉面|粉麵|拉面|拉麵|乌冬|烏冬|荞麦|蕎麥|云吞面|雲吞麵|馄饨面|板面|刀削面|刀削麵|担担面|擔擔麵|牛肉面|牛肉麵|阳春面|炒面|炒麵|汤面|湯麵|捞面|撈麵|面线|麵線|面馆|麵館|意面|意麵/i,
+  cafe: /coffee|café|\bcafe\b|dessert|ice.?cream|gelato|cake|bakery|patisserie|bubble.?tea|\bjuice\b|\btea\b|waffle|pancake|donut|doughnut|toast|咖啡|奶茶|茶饮|茶飲|甜品|甜点|甜點|蛋糕|面包|麵包|烘焙|冰淇淋|冰激凌|雪糕|华夫|鬆餅|吐司|布丁|泡芙|可丽饼|可麗餅/i,
 };
+
+/* Decide a place's categories from its name + cuisine tags. */
+function catsFor(r) {
+  const hay = ((r.name || "") + " " + (r.cuisineRaw || "")).toLowerCase();
+  const list = Object.keys(CAT_PATTERNS).filter((k) => CAT_PATTERNS[k].test(hay));
+  if (r.amenity === "cafe" && !list.includes("cafe")) list.push("cafe");
+  return list;
+}
 
 /* ---------------------------------------------------
    i18n — English / 中文
@@ -417,6 +430,8 @@ const GOOGLE_SLICES = [
   { includedTypes: ["italian_restaurant", "french_restaurant", "american_restaurant", "pizza_restaurant", "hamburger_restaurant", "steak_house"] },
   { includedTypes: ["cafe", "coffee_shop", "bakery", "dessert_shop", "ice_cream_shop"] },
   { includedTypes: ["fast_food_restaurant", "food_court"] },
+  // catch-alls: many local spots are tagged only with these broad types
+  { includedTypes: ["asian_restaurant", "seafood_restaurant", "vegetarian_restaurant", "barbecue_restaurant", "buffet_restaurant", "indian_restaurant"] },
 ];
 
 async function fetchOverpass() {
@@ -457,7 +472,7 @@ async function fetchOverpass() {
         amenity: tags.amenity,
         dist: haversine(state.lat, state.lon, lat, lon),
       };
-      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      r.cats = catsFor(r);
       return r;
     })
     .filter(Boolean);
@@ -517,7 +532,7 @@ async function fetchGoogle() {
         amenity,
         dist: haversine(state.lat, state.lon, p.location.latitude, p.location.longitude),
       };
-      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      r.cats = catsFor(r);
       out.push(r);
     }
   }
@@ -556,7 +571,7 @@ async function fetchTomTom() {
         amenity,
         dist: Math.round(item.dist ?? haversine(state.lat, state.lon, item.position.lat, item.position.lon)),
       };
-      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      r.cats = catsFor(r);
       out.push(r);
     }
   }
