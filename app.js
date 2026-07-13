@@ -60,7 +60,7 @@ const I18N = {
     diaryTitle: "📖 Food Diary",
     btnReport: '<span class="btn-emoji">✨</span> Monthly report',
     diaryEmpty: "No yummy memories yet — go eat something and check in! 🥺",
-    footer: 'Made with 🧡 &amp; hunger · data from <a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> &amp; <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
+    footer: 'Made with 🧡 &amp; hunger · data from Google, <a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> &amp; <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
     pendingCheckin: "📸 Check in!",
     pendingSkip: "Skip",
     checkinTitle: "📸 Yummy check-in",
@@ -134,7 +134,7 @@ const I18N = {
     diaryTitle: "📖 美食日记",
     btnReport: '<span class="btn-emoji">✨</span> 月度报告',
     diaryEmpty: "还没有美味回忆——快去吃点好吃的再来打卡吧！🥺",
-    footer: '用 🧡 和饥饿感制作 · 数据来自 <a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> 和 <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
+    footer: '用 🧡 和饥饿感制作 · 数据来自 Google、<a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a> 和 <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>',
     pendingCheckin: "📸 打卡！",
     pendingSkip: "跳过",
     checkinTitle: "📸 美味打卡",
@@ -394,6 +394,31 @@ const OVERPASS_ENDPOINTS = [
    this site's domain in the TomTom developer dashboard. */
 const TOMTOM_KEY = "M6lbCGiTkrmkVFWTDx705iaFf9afCcUa";
 
+/* Google Places API (New) — best coverage and the only source with real
+   price levels. Key is referrer-restricted to this site's domain. */
+const GOOGLE_KEY = "AIzaSyD6jZF5PlsYMI_8jlFI8cUTlqX-J1zKiSA";
+
+const GOOGLE_PRICE = {
+  PRICE_LEVEL_FREE: "cheap",
+  PRICE_LEVEL_INEXPENSIVE: "cheap",
+  PRICE_LEVEL_MODERATE: "mid",
+  PRICE_LEVEL_EXPENSIVE: "fancy",
+  PRICE_LEVEL_VERY_EXPENSIVE: "fancy",
+};
+
+/* Nearby Search returns at most 20 places per call, so slice the food
+   world into parallel type queries to build a wide pool (8 calls/search). */
+const GOOGLE_SLICES = [
+  { includedTypes: ["restaurant"], excludedTypes: ["lodging"] },
+  { includedTypes: ["chinese_restaurant"] },
+  { includedTypes: ["japanese_restaurant", "sushi_restaurant", "ramen_restaurant"] },
+  { includedTypes: ["korean_restaurant"] },
+  { includedTypes: ["thai_restaurant", "vietnamese_restaurant", "indonesian_restaurant", "filipino_restaurant"] },
+  { includedTypes: ["italian_restaurant", "french_restaurant", "american_restaurant", "pizza_restaurant", "hamburger_restaurant", "steak_house"] },
+  { includedTypes: ["cafe", "coffee_shop", "bakery", "dessert_shop", "ice_cream_shop"] },
+  { includedTypes: ["fast_food_restaurant", "food_court"] },
+];
+
 async function fetchOverpass() {
   const query = `
     [out:json][timeout:25];
@@ -436,6 +461,67 @@ async function fetchOverpass() {
       return r;
     })
     .filter(Boolean);
+}
+
+async function fetchGoogle() {
+  const requests = GOOGLE_SLICES.map((slice) =>
+    fetch("https://places.googleapis.com/v1/places:searchNearby", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": GOOGLE_KEY,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.primaryType,places.priceLevel",
+      },
+      body: JSON.stringify({
+        ...slice,
+        maxResultCount: 20,
+        rankPreference: "DISTANCE",
+        languageCode: T().locale,
+        locationRestriction: {
+          circle: { center: { latitude: state.lat, longitude: state.lon }, radius: state.radius },
+        },
+      }),
+    }).then((res) => (res.ok ? res.json() : Promise.reject(new Error("google " + res.status))))
+  );
+
+  // one slice failing (e.g. per-type quota) shouldn't kill the others
+  const pages = (await Promise.allSettled(requests))
+    .filter((p) => p.status === "fulfilled")
+    .map((p) => p.value);
+  if (!pages.length) throw new Error("google unavailable");
+
+  const CAFE_TYPES = ["cafe", "coffee_shop", "bakery", "dessert_shop", "ice_cream_shop", "tea_house"];
+  const out = [];
+  for (const page of pages) {
+    for (const p of page.places || []) {
+      if (!p.displayName?.text || !p.location) continue;
+      const pt = p.primaryType || "";
+      const amenity =
+        pt === "fast_food_restaurant" ? "fast_food"
+        : CAFE_TYPES.includes(pt) ? "cafe"
+        : pt === "food_court" ? "food_court"
+        : "restaurant";
+      // keep underscores: the category regexes match tags like dim_sum
+      const cuisineRaw = (p.types || []).join(" ").toLowerCase();
+      const tagsLike = { cuisine: cuisineRaw, amenity };
+      const r = {
+        id: "g" + p.id,
+        name: p.displayName.text,
+        lat: p.location.latitude,
+        lon: p.location.longitude,
+        emoji: emojiFor(tagsLike),
+        // real Google price level when present, heuristic otherwise
+        budget: GOOGLE_PRICE[p.priceLevel] || guessBudget(tagsLike),
+        cuisine: pt.replace(/_restaurant$/, "").replace(/_/g, " "),
+        cuisineRaw,
+        amenity,
+        dist: haversine(state.lat, state.lon, p.location.latitude, p.location.longitude),
+      };
+      r.cats = Object.keys(CATEGORIES).filter((k) => CATEGORIES[k](r));
+      out.push(r);
+    }
+  }
+  return out;
 }
 
 async function fetchTomTom() {
@@ -500,19 +586,21 @@ function dedupePlaces(list) {
 }
 
 async function fetchRestaurants() {
-  // query both sources in parallel; either one failing is fine
-  const [tomtom, osm] = await Promise.all([
+  // query all sources in parallel; any of them failing is fine
+  const [google, tomtom, osm] = await Promise.all([
+    fetchGoogle().catch(() => null),
     fetchTomTom().catch(() => null),
     fetchOverpass().catch(() => null),
   ]);
 
-  if (!tomtom && !osm) {
+  if (!google && !tomtom && !osm) {
     setStatus("err", () => T().dbFail);
     return;
   }
 
-  // TomTom entries first so its fresher data wins deduplication
-  state.restaurants = dedupePlaces([...(tomtom || []), ...(osm || [])])
+  // richest source first so its entries win deduplication:
+  // Google (real prices) > TomTom (fresh POIs) > OSM (long tail)
+  state.restaurants = dedupePlaces([...(google || []), ...(tomtom || []), ...(osm || [])])
     .sort((a, b) => a.dist - b.dist);
 
   if (state.restaurants.length === 0) {
